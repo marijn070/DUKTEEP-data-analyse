@@ -5,14 +5,14 @@ from datetime import timedelta
 from pathlib import Path
 
 import cv2
-import psycopg
+import pandas as pd
 from deepface import DeepFace
-from downloader import download_channel
-from frame_sampler import sample_frames_with_info
 from tqdm import tqdm
 
-DUKTEEP_LINK: str = "https://www.youtube.com/@dukteep"
-REGISTERED_VIDEOS_FILE = "registered_videos.txt"
+from config import DUKTEEP_LINK
+from db import get_connection, get_existing_image_names
+from video.downloader import download_channel
+from video.sampler import sample_frames_with_info
 
 
 def get_duration(f) -> timedelta:
@@ -21,13 +21,6 @@ def get_duration(f) -> timedelta:
     frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
 
     return timedelta(seconds=frames / fps) if fps > 0 else timedelta(seconds=0)
-
-
-def get_existing_image_names(conn):
-    """Load set of existing image names from the database"""
-    with conn.cursor() as cur:
-        cur.execute("SELECT img_name FROM embeddings")
-        return set(row[0] for row in cur.fetchall())
 
 
 def register_video(mp4_file, conn):
@@ -42,7 +35,6 @@ def register_video(mp4_file, conn):
         # check if already registered
         if img_name in existing:
             continue
-
         try:
             # DeepFace.register prints to stdout, redirect to devnull
             with open(os.devnull, "w") as f, contextlib.redirect_stdout(f):
@@ -61,31 +53,65 @@ def register_video(mp4_file, conn):
     )
 
 
+def find_dukteepers(conn, face_paths_with_names):
+
+    names = list(face_paths_with_names.keys())
+    paths = list(face_paths_with_names.values())
+
+    dfs = DeepFace.search(
+        img=paths,
+        connection=conn,
+    )
+
+    def process_df(df, name):
+        df = df.copy()
+
+        df[["date_str", "rest"]] = df["img_name"].str.split(" - ", expand=True)
+        df["date"] = pd.to_datetime(df["date_str"], format="%Y%m%d").dt.date
+
+        df[["video", "timestamp_str"]] = df["rest"].str.split("_", expand=True)
+
+        df["timestamp"] = df["timestamp_str"].str.replace("s", "", regex=False).astype(float)
+
+        df["dukteeper"] = name
+
+        return df[["date", "video", "timestamp", "dukteeper"]]
+
+    processed = [process_df(df, name) for df, name in zip(dfs, names)]
+
+    return pd.concat(processed, ignore_index=True)
+
+
 def main():
     # get the videos from the channel
     download_channel(DUKTEEP_LINK)
 
     # get all the mp4 files
     mp4_files = glob.glob("videos/*.mp4")
+
     total_playtime: timedelta = sum((get_duration(f) for f in mp4_files), timedelta())
 
     # print stats (total videos, total length)
     print(f"Totaal aantal videos: {len(mp4_files)}")
     print(f"Totale lengte: {total_playtime}")
 
-    dukteep_faces = [
-        "known_faces/marijn.png",
-        "known_faces/angela.jpg",
-        "known_faces/keon.png",
-        "known_faces/mees.png",
-    ]
-
-    with psycopg.connect("postgresql://postgres:postgres@localhost:5432/postgres") as conn:
-        # registered_videos = load_registered_videos()
+    with get_connection() as conn:
         total_videos = len(mp4_files)
 
         for i, mp4_file in enumerate(mp4_files, 1):
             print(f"Processing video {i}/{total_videos}: {mp4_file}")
+            register_video(mp4_file, conn)
+
+        face_paths_with_names = {
+            "marijn": "known_faces/marijn.png",
+            "koen": "known_faces/koen.png",
+            "angela": "known_faces/angela.png",
+            "koen": "known_faces/koen.png",
+        }
+
+        print("Finding dukteepers...")
+
+        df = find_dukteepers(conn, face_paths_with_names)
 
 
 if __name__ == "__main__":
