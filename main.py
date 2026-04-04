@@ -2,7 +2,6 @@ import glob
 from datetime import timedelta
 from pathlib import Path
 
-import cv2
 import pandas as pd
 from deepface import DeepFace
 from tqdm import tqdm
@@ -10,15 +9,8 @@ from tqdm import tqdm
 from config import DUKTEEP_LINK, VIDEO_DIR
 from db import get_connection
 from video.downloader import download_channel
+from video.metadata import get_duration
 from video.sampler import sample_frames_with_info
-
-
-def get_duration(f) -> timedelta:
-    cap = cv2.VideoCapture(f)
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
-
-    return timedelta(seconds=frames / fps) if fps > 0 else timedelta(seconds=0)
 
 
 def register_video(mp4_file, conn):
