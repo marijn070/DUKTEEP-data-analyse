@@ -1,75 +1,12 @@
 import glob
 from datetime import timedelta
-from pathlib import Path
 
-import pandas as pd
-from deepface import DeepFace
-from tqdm import tqdm
-
-from config import DUKTEEP_LINK, VIDEO_DIR
+from config import DUKTEEP_LINK, FACE_PATHS_WITH_NAMES, VIDEO_DIR
 from db import get_connection
+from face_recognition.registration import register_video
+from face_recognition.search import find_faces
 from video.downloader import download_channel
 from video.metadata import get_duration
-from video.sampler import sample_frames_with_info
-
-
-def register_video(mp4_file, conn):
-    print(f"Registering {mp4_file}...")
-
-    total, frames = sample_frames_with_info(mp4_file, interval=1.0)
-
-    # existing = get_existing_image_names(conn)
-    new_inserted = 0
-
-    for timestamp, frame in tqdm(frames, total=total):
-        img_name = f"{Path(mp4_file).stem}_{timestamp:.2f}s"
-
-        # check if already registered
-        # if img_name in existing:
-        #     continue
-        try:
-            DeepFace.register(
-                frame,
-                database_type="pgvector",
-                img_name=f"{Path(mp4_file).stem}__{timestamp:.2f}",
-                connection=conn,
-                enforce_detection=False,
-                model_name="Facenet",
-            )
-            new_inserted += 1
-        except Exception as e:
-            tqdm.write(f"Error processing {mp4_file} at timestamp {timestamp:.2f}s: {e}")
-
-    print(
-        f"Registered {new_inserted} frames from {mp4_file}, ({total - new_inserted} already registered)"
-    )
-
-
-def find_dukteepers(conn, face_paths_with_names):
-
-    names = list(face_paths_with_names.keys())
-    paths = list(face_paths_with_names.values())
-
-    dfs = DeepFace.search(
-        img=paths,
-        connection=conn,
-    )
-
-    def process_df(df, name):
-        df = df.copy()
-
-        df[["date_str", "video", "timestamp_str"]] = df["img_name"].str.split(
-            "__", n=2, expand=True
-        )
-        df["date"] = pd.to_datetime(df["date_str"], format="%Y%m%d").dt.date
-        df["timestamp"] = df["timestamp_str"].str.replace("s", "", regex=False).astype(float)
-        df["dukteeper"] = name
-
-        return df[["date", "video", "timestamp", "dukteeper"]]
-
-    processed = [process_df(df, name) for df, name in zip(dfs, names)]
-
-    return pd.concat(processed, ignore_index=True)
 
 
 def main():
@@ -90,15 +27,10 @@ def main():
             print(f"Processing video {i}/{total_videos}: {mp4_file}")
             register_video(mp4_file, conn)
 
-        face_paths_with_names = {
-            "marijn": "known_faces/marijn.png",
-            "koen": "known_faces/koen.png",
-            "angela": "known_faces/angela.png",
-            "koen": "known_faces/koen.png",
-        }
+        face_paths_with_names = FACE_PATHS_WITH_NAMES
 
         print("Finding dukteepers...")
-        df = find_dukteepers(conn, face_paths_with_names)
+        df = find_faces(conn, face_paths_with_names)
 
         print("Saving results...")
         df.to_parquet("dukteepers.parquet")

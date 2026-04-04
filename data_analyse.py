@@ -10,6 +10,7 @@ app = marimo.App(
 @app.cell
 def _():
     import pickle
+
     import pandas as pd
 
     return pd, pickle
@@ -28,32 +29,30 @@ def _(pickle):
 def _(angela, koen, marijn, mees, pd):
     def process_df(df, name: str):
         # get date from video name
-        df[['date_str', 'rest']] = df['img_name'].str.split(' - ', expand = True)
+        df[["date_str", "rest"]] = df["img_name"].str.split(" - ", expand=True)
         # convert to date
-        df['date'] = pd.to_datetime(df['date_str'], format='%Y%m%d').dt.date
-        df[['video', 'timestamp_str']] = df['rest'].str.split('_', expand = True)
-        df['timestamp'] = (
-            df['timestamp_str']
-            .str.replace('s', '', regex=False)
-            .astype(float)
-        )
-        df['dukteeper'] = name
+        df["date"] = pd.to_datetime(df["date_str"], format="%Y%m%d").dt.date
+        df[["video", "timestamp_str"]] = df["rest"].str.split("_", expand=True)
+        df["timestamp"] = df["timestamp_str"].str.replace("s", "", regex=False).astype(float)
+        df["dukteeper"] = name
 
-        return df[['date', 'video', 'timestamp', 'dukteeper']]
+        return df[["date", "video", "timestamp", "dukteeper"]]
 
-    df = pd.concat([
-        process_df(marijn, 'marijn'),
-        process_df(koen, 'koen'),
-        process_df(angela, 'angela'),
-        process_df(mees, 'mees')
-    ])
+    df = pd.concat(
+        [
+            process_df(marijn, "marijn"),
+            process_df(koen, "koen"),
+            process_df(angela, "angela"),
+            process_df(mees, "mees"),
+        ]
+    )
     return (df,)
 
 
 @app.cell(hide_code=True)
 def _(df, pd):
     def fill_small_gaps(group):
-        group = group.sort_values('timestamp').reset_index(drop=True)
+        group = group.sort_values("timestamp").reset_index(drop=True)
 
         new_rows = []
 
@@ -61,9 +60,9 @@ def _(df, pd):
             prev = group.loc[i - 1]
             curr = group.loc[i]
 
-            if curr['timestamp'] - prev['timestamp'] == 2:
+            if curr["timestamp"] - prev["timestamp"] == 2:
                 new_row = prev.copy()
-                new_row['timestamp'] = prev['timestamp'] + 1
+                new_row["timestamp"] = prev["timestamp"] + 1
                 new_rows.append(new_row)
 
         if new_rows:
@@ -73,7 +72,7 @@ def _(df, pd):
 
     groups = []
 
-    for (_, _), group in df.groupby(['video', 'dukteeper']):
+    for (_, _), group in df.groupby(["video", "dukteeper"]):
         groups.append(fill_small_gaps(group))
 
     df_filled = pd.concat(groups, ignore_index=True)
@@ -84,24 +83,18 @@ def _(df, pd):
 def _():
     import altair as alt
 
-    alt.renderers.enable('default')
+    alt.renderers.enable("default")
     return (alt,)
 
 
 @app.cell(hide_code=True)
 def _(df_filled):
     total_seconds = (
-        df_filled
-        .groupby('dukteeper')['timestamp']
-        .count()
-        .reset_index(name='total_seconds')
+        df_filled.groupby("dukteeper")["timestamp"].count().reset_index(name="total_seconds")
     )
 
     total_videos = (
-        df_filled
-        .groupby('dukteeper')['video']
-        .nunique()
-        .reset_index(name='total_videos')
+        df_filled.groupby("dukteeper")["video"].nunique().reset_index(name="total_videos")
     )
     return total_seconds, total_videos
 
@@ -109,33 +102,38 @@ def _(df_filled):
 @app.cell(hide_code=True)
 def _(df_filled):
     daily_counts = (
-        df_filled.groupby(['dukteeper', 'date'])
-                 .size()  # number of rows = frames
-                 .reset_index(name='frames')
-                 .sort_values(['dukteeper', 'date'])
+        df_filled.groupby(["dukteeper", "date"])
+        .size()  # number of rows = frames
+        .reset_index(name="frames")
+        .sort_values(["dukteeper", "date"])
     )
 
-    unique_videos = df_filled[['dukteeper', 'video', 'date']].drop_duplicates()
+    unique_videos = df_filled[["dukteeper", "video", "date"]].drop_duplicates()
 
     daily_video_counts = (
-        unique_videos.groupby(['dukteeper', 'date'])
-                 .size()  # number of rows = frames
-                 .reset_index(name='new_videos')
-                 .sort_values(['dukteeper', 'date'])
+        unique_videos.groupby(["dukteeper", "date"])
+        .size()  # number of rows = frames
+        .reset_index(name="new_videos")
+        .sort_values(["dukteeper", "date"])
     )
 
     daily_total_video_counts = (
-        df_filled[['video', 'date']].drop_duplicates().groupby('date').size().reset_index(name='new_videos').sort_values('date')
-
+        df_filled[["video", "date"]]
+        .drop_duplicates()
+        .groupby("date")
+        .size()
+        .reset_index(name="new_videos")
+        .sort_values("date")
     )
 
     # Compute cumulative sum **per person**
-    daily_counts['cumulative_frames'] = daily_counts.groupby('dukteeper')['frames'].cumsum()
+    daily_counts["cumulative_frames"] = daily_counts.groupby("dukteeper")["frames"].cumsum()
 
+    daily_video_counts["cumulative_videos"] = daily_video_counts.groupby("dukteeper")[
+        "new_videos"
+    ].cumsum()
 
-    daily_video_counts['cumulative_videos'] = daily_video_counts.groupby('dukteeper')['new_videos'].cumsum()
-
-    daily_total_video_counts['cumulative_videos'] = daily_video_counts['new_videos'].cumsum()
+    daily_total_video_counts["cumulative_videos"] = daily_video_counts["new_videos"].cumsum()
     return daily_counts, daily_video_counts
 
 
@@ -150,38 +148,41 @@ def _(alt, daily_counts, daily_video_counts, pd, total_seconds, total_videos):
     # -----------------------
     # 1️⃣ Total Seconds Bar Chart
     # -----------------------
-    bars_seconds = alt.Chart(total_seconds).mark_bar().encode(
-        x=alt.X('dukteeper:N', title='Dukteeper'),
-        y=alt.Y('total_seconds:Q', title='Aantal Seconden'),
-        color='dukteeper:N'
-    ).properties(width=width_bar, height=height_bar, title='Aantal Seconden in Beeld')
+    bars_seconds = (
+        alt.Chart(total_seconds)
+        .mark_bar()
+        .encode(
+            x=alt.X("dukteeper:N", title="Dukteeper"),
+            y=alt.Y("total_seconds:Q", title="Aantal Seconden"),
+            color="dukteeper:N",
+        )
+        .properties(width=width_bar, height=height_bar, title="Aantal Seconden in Beeld")
+    )
 
     labels_seconds = bars_seconds.mark_text(
         dy=-5,  # shift text above bars
-        align='center',
-        color='black'
-    ).encode(
-        text=alt.Text('total_seconds', format='.1f')
- 
-    )
+        align="center",
+        color="black",
+    ).encode(text=alt.Text("total_seconds", format=".1f"))
 
     chart_total_seconds = bars_seconds + labels_seconds
 
     # -----------------------
     # 2️⃣ Total Videos Bar Chart
     # -----------------------
-    bars_videos = alt.Chart(total_videos).mark_bar().encode(
-        x=alt.X('dukteeper:N', title='Dukteeper'),
-        y=alt.Y('total_videos:Q', title='Antal Videos'),
-        color='dukteeper:N'
-    ).properties(width=width_bar, height=height_bar, title='Aantal videos verschenen')
+    bars_videos = (
+        alt.Chart(total_videos)
+        .mark_bar()
+        .encode(
+            x=alt.X("dukteeper:N", title="Dukteeper"),
+            y=alt.Y("total_videos:Q", title="Antal Videos"),
+            color="dukteeper:N",
+        )
+        .properties(width=width_bar, height=height_bar, title="Aantal videos verschenen")
+    )
 
-    labels_videos = bars_videos.mark_text(
-        dy=-5,
-        align='center',
-        color='black'
-    ).encode(
-        text='total_videos:Q'
+    labels_videos = bars_videos.mark_text(dy=-5, align="center", color="black").encode(
+        text="total_videos:Q"
     )
 
     chart_total_videos = bars_videos + labels_videos
@@ -189,60 +190,68 @@ def _(alt, daily_counts, daily_video_counts, pd, total_seconds, total_videos):
     # -----------------------
     # 3️⃣ Running Total of Frames Line Chart
     # -----------------------
-    chart_running_total_seconds = alt.Chart(daily_counts).mark_line(interpolate='step-after', point=True).encode(
-        x=alt.X('date:T', title='Date'),
-        y=alt.Y('cumulative_frames:Q', title='Aantal Secondes'),
-        color='dukteeper:N',
-        tooltip=['dukteeper', 'date', 'cumulative_frames']
-    ).properties(
-        width=width_line,
-        height=height_line,
-        title='Running Total of Frames per Dukteeper'
+    chart_running_total_seconds = (
+        alt.Chart(daily_counts)
+        .mark_line(interpolate="step-after", point=True)
+        .encode(
+            x=alt.X("date:T", title="Date"),
+            y=alt.Y("cumulative_frames:Q", title="Aantal Secondes"),
+            color="dukteeper:N",
+            tooltip=["dukteeper", "date", "cumulative_frames"],
+        )
+        .properties(
+            width=width_line, height=height_line, title="Running Total of Frames per Dukteeper"
+        )
     )
 
     # -----------------------
     # 4️⃣ Running Total of Videos Line Chart
     # -----------------------
-    chart_running_total_videos = alt.Chart(daily_video_counts).mark_line(interpolate='step-after', point=True).encode(
-        x=alt.X('date:T', title='Date'),
-        y=alt.Y('cumulative_videos:Q', title='Aantal Videos'),
-        color='dukteeper:N',
-        tooltip=['dukteeper', 'date', 'cumulative_videos']
-    ).properties(
-        width=width_line,
-        height=height_line,
-        title='Running Total of Videos per Dukteeper'
+    chart_running_total_videos = (
+        alt.Chart(daily_video_counts)
+        .mark_line(interpolate="step-after", point=True)
+        .encode(
+            x=alt.X("date:T", title="Date"),
+            y=alt.Y("cumulative_videos:Q", title="Aantal Videos"),
+            color="dukteeper:N",
+            tooltip=["dukteeper", "date", "cumulative_videos"],
+        )
+        .properties(
+            width=width_line, height=height_line, title="Running Total of Videos per Dukteeper"
+        )
     )
-
 
     import base64
     from pathlib import Path
 
     # Path to your folder of known faces
-    faces_folder = Path('known_faces')
+    faces_folder = Path("known_faces")
 
     # Build a dataframe with Dukteeper names and image data
     avatars_list = []
 
     for img_path in faces_folder.iterdir():
-        if img_path.suffix.lower() in ['.png', '.jpg', '.jpeg']:
+        if img_path.suffix.lower() in [".png", ".jpg", ".jpeg"]:
             # Assuming file name is the Dukteeper name: "Alice.png" -> "Alice"
             dukteeper_name = img_path.stem
             # Read image and encode as base64
             with open(img_path, "rb") as file:
                 img_bytes = file.read()
-                img_b64 = base64.b64encode(img_bytes).decode('utf-8')
+                img_b64 = base64.b64encode(img_bytes).decode("utf-8")
                 img_data = f"data:image/{img_path.suffix[1:]};base64,{img_b64}"
                 avatars_list.append({"dukteeper": dukteeper_name, "img_url": img_data})
 
     avatars_df = pd.DataFrame(avatars_list)
     avatars_df
 
-
-    avatars = alt.Chart(avatars_df).mark_image(width=150, height=150).encode(
-        x='dukteeper:N',
-        y=alt.value(-80),  # slightly below x-axis
-        url='img_url:N'
+    avatars = (
+        alt.Chart(avatars_df)
+        .mark_image(width=150, height=150)
+        .encode(
+            x="dukteeper:N",
+            y=alt.value(-80),  # slightly below x-axis
+            url="img_url:N",
+        )
     )
 
     chart_total_seconds = chart_total_seconds + avatars
