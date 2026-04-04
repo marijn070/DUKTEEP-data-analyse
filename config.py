@@ -1,4 +1,3 @@
-# config.py
 from pathlib import Path
 
 DUKTEEP_LINK = "https://www.youtube.com/@dukteep"
@@ -10,5 +9,5 @@ KNOWN_FACES = [
     "known_faces/mees.png",
 ]
 
-DB_URI = "postgresql://postgres:postgres@localhost:5432/postgres"
+DB_URI = "postgresql://postgres:postgres@localhost:5555/dukteep"
 FRAME_INTERVAL = 1.0

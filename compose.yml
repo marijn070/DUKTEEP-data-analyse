@@ -1,0 +1,10 @@
+services:
+  db:
+    hostname: db
+    image: pgvector/pgvector:pg18-trixie
+    ports:
+      - 5555:5432
+    environment:
+      - POSTGRES_DB=dukteep
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres

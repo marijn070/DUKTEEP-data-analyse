@@ -1,4 +1,3 @@
-# db.py
 import psycopg
 
 from config import DB_URI
