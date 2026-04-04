@@ -16,7 +16,7 @@ def download_channel(url):
             "--sub-format",
             "srt",
             "-o",
-            "videos/%(upload_date)s - %(title)s.%(ext)s",
+            "videos/%(upload_date)s__%(title)s.%(ext)s",
             url,
         ]
     )
