@@ -1,6 +1,4 @@
-import contextlib
 import glob
-import os
 from datetime import timedelta
 from pathlib import Path
 
@@ -10,7 +8,7 @@ from deepface import DeepFace
 from tqdm import tqdm
 
 from config import DUKTEEP_LINK
-from db import get_connection, get_existing_image_names
+from db import get_connection
 from video.downloader import download_channel
 from video.sampler import sample_frames_with_info
 
@@ -24,26 +22,28 @@ def get_duration(f) -> timedelta:
 
 
 def register_video(mp4_file, conn):
+    print(f"Registering {mp4_file}...")
+
     total, frames = sample_frames_with_info(mp4_file, interval=1.0)
 
-    existing = get_existing_image_names(conn)
+    # existing = get_existing_image_names(conn)
     new_inserted = 0
 
     for timestamp, frame in tqdm(frames, total=total):
         img_name = f"{Path(mp4_file).stem}_{timestamp:.2f}s"
 
         # check if already registered
-        if img_name in existing:
-            continue
+        # if img_name in existing:
+        #     continue
         try:
-            # DeepFace.register prints to stdout, redirect to devnull
-            with open(os.devnull, "w") as f, contextlib.redirect_stdout(f):
-                DeepFace.register(
-                    frame,
-                    img_name=f"{Path(mp4_file).stem}_{timestamp:.2f}s",
-                    connection=conn,
-                    enforce_detection=False,
-                )
+            DeepFace.register(
+                frame,
+                database_type="pgvector",
+                img_name=f"{Path(mp4_file).stem}__{timestamp:.2f}",
+                connection=conn,
+                enforce_detection=False,
+                model_name="Facenet",
+            )
             new_inserted += 1
         except Exception as e:
             tqdm.write(f"Error processing {mp4_file} at timestamp {timestamp:.2f}s: {e}")
@@ -66,13 +66,11 @@ def find_dukteepers(conn, face_paths_with_names):
     def process_df(df, name):
         df = df.copy()
 
-        df[["date_str", "rest"]] = df["img_name"].str.split(" - ", expand=True)
+        df[["date_str", "video", "timestamp_str"]] = df["img_name"].str.split(
+            "__", n=2, expand=True
+        )
         df["date"] = pd.to_datetime(df["date_str"], format="%Y%m%d").dt.date
-
-        df[["video", "timestamp_str"]] = df["rest"].str.split("_", expand=True)
-
         df["timestamp"] = df["timestamp_str"].str.replace("s", "", regex=False).astype(float)
-
         df["dukteeper"] = name
 
         return df[["date", "video", "timestamp", "dukteeper"]]
@@ -110,8 +108,10 @@ def main():
         }
 
         print("Finding dukteepers...")
-
         df = find_dukteepers(conn, face_paths_with_names)
+
+        print("Saving results...")
+        df.to_parquet("dukteepers.parquet")
 
 
 if __name__ == "__main__":
