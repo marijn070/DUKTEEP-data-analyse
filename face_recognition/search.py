@@ -25,8 +25,8 @@ def process_df(df, name):
     df = df.copy()
 
     df[["date_str", "video", "timestamp_str"]] = df["img_name"].str.split("__", n=2, expand=True)
-    df["date"] = pd.to_datetime(df["date_str"], format="%Y%m%d").dt.date
-    df["timestamp"] = df["timestamp_str"].str.replace("s", "", regex=False).astype(float)
+    df["date"] = pd.to_datetime(df["date_str"], format="%Y%m%d")
+    df["timestamp"] = pd.to_timedelta(df["timestamp_str"].astype(float), unit="s")
     df["person_name"] = name
 
     return df[["date", "video", "timestamp", "person_name"]]

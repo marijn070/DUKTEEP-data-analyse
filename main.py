@@ -1,9 +1,9 @@
+import datetime
 import glob
 from datetime import timedelta
 
 from config import DUKTEEP_LINK, FACE_PATHS_WITH_NAMES, VIDEO_DIR
 from db import get_connection
-from face_recognition.registration import register_video
 from face_recognition.search import find_faces
 from video.downloader import download_channel
 from video.metadata import get_duration
@@ -23,9 +23,9 @@ def main():
     with get_connection() as conn:
         total_videos = len(mp4_files)
 
-        for i, mp4_file in enumerate(mp4_files, 1):
-            print(f"Processing video {i}/{total_videos}: {mp4_file}")
-            register_video(mp4_file, conn)
+        # for i, mp4_file in enumerate(mp4_files, 1):
+        #     print(f"Processing video {i}/{total_videos}: {mp4_file}")
+        #     register_video(mp4_file, conn)
 
         face_paths_with_names = FACE_PATHS_WITH_NAMES
 
@@ -33,7 +33,8 @@ def main():
         df = find_faces(conn, face_paths_with_names)
 
         print("Saving results...")
-        df.to_parquet("dukteepers.parquet")
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        df.to_parquet(f"data/dukteepers_{timestamp}.parquet")
 
 
 if __name__ == "__main__":

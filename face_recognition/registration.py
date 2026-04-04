@@ -9,8 +9,6 @@ from video.sampler import sample_frames_with_info
 
 
 def register_video(mp4_file, conn):
-    print(f"Registering {mp4_file}...")
-
     total, frames = sample_frames_with_info(
         mp4_file,
         interval=SAMPLE_INTERVAL,
