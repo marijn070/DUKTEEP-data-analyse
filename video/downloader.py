@@ -1,7 +1,7 @@
 import subprocess
 
 
-def download_channel(url):
+def download_channel(url, output_dir):
     subprocess.run(
         [
             "yt-dlp",
@@ -16,7 +16,7 @@ def download_channel(url):
             "--sub-format",
             "srt",
             "-o",
-            "videos/%(upload_date)s__%(title)s.%(ext)s",
+            f"{output_dir}/%(upload_date)s__%(title)s.%(ext)s",
             url,
         ]
     )

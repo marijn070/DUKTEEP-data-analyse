@@ -7,7 +7,7 @@ import pandas as pd
 from deepface import DeepFace
 from tqdm import tqdm
 
-from config import DUKTEEP_LINK
+from config import DUKTEEP_LINK, VIDEO_DIR
 from db import get_connection
 from video.downloader import download_channel
 from video.sampler import sample_frames_with_info
@@ -82,13 +82,11 @@ def find_dukteepers(conn, face_paths_with_names):
 
 def main():
     # get the videos from the channel
-    download_channel(DUKTEEP_LINK)
+    download_channel(DUKTEEP_LINK, VIDEO_DIR)
 
     # get all the mp4 files
-    mp4_files = glob.glob("videos/*.mp4")
-
+    mp4_files = glob.glob(f"{VIDEO_DIR}/*.mp4")
     total_playtime: timedelta = sum((get_duration(f) for f in mp4_files), timedelta())
-
     # print stats (total videos, total length)
     print(f"Totaal aantal videos: {len(mp4_files)}")
     print(f"Totale lengte: {total_playtime}")
