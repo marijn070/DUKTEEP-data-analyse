@@ -13,6 +13,7 @@ def find_faces(conn, face_paths_with_names) -> pd.DataFrame:
         connection=conn,
         database_type=DATABASE_TYPE,
         model_name=MODEL_NAME,
+        search_method="ann",
     )
 
     processed = [process_df(df, name) for df, name in zip(dfs, names)]
