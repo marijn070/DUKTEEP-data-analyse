@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.21.1"
+__generated_with = "0.22.4"
 app = marimo.App(
     width="medium",
     layout_file="layouts/data_analyse.slides.json",
@@ -9,48 +9,24 @@ app = marimo.App(
 
 @app.cell
 def _():
-    import pickle
-
     import pandas as pd
+    from pathlib import Path
 
-    return pd, pickle
+    import base64
 
-
-@app.cell(hide_code=True)
-def _(pickle):
-    with open("dfs.pkl", mode="rb") as f:
-        dfs = pickle.load(f)
-
-    marijn, angela, koen, mees = dfs
-    return angela, koen, marijn, mees
+    return Path, base64, pd
 
 
-@app.cell(hide_code=True)
-def _(angela, koen, marijn, mees, pd):
-    def process_df(df, name: str):
-        # get date from video name
-        df[["date_str", "rest"]] = df["img_name"].str.split(" - ", expand=True)
-        # convert to date
-        df["date"] = pd.to_datetime(df["date_str"], format="%Y%m%d").dt.date
-        df[["video", "timestamp_str"]] = df["rest"].str.split("_", expand=True)
-        df["timestamp"] = df["timestamp_str"].str.replace("s", "", regex=False).astype(float)
-        df["dukteeper"] = name
+@app.cell
+def _(Path, pd):
+    dir_path = Path("data")
 
-        return df[["date", "video", "timestamp", "dukteeper"]]
+    newest_file = max(dir_path.iterdir(), key=lambda f: f.stat().st_mtime)
 
-    df = pd.concat(
-        [
-            process_df(marijn, "marijn"),
-            process_df(koen, "koen"),
-            process_df(angela, "angela"),
-            process_df(mees, "mees"),
-        ]
-    )
-    return (df,)
+    df = pd.read_parquet(newest_file)
 
+    print(df.columns)
 
-@app.cell(hide_code=True)
-def _(df, pd):
     def fill_small_gaps(group):
         group = group.sort_values("timestamp").reset_index(drop=True)
 
@@ -72,10 +48,12 @@ def _(df, pd):
 
     groups = []
 
-    for (_, _), group in df.groupby(["video", "dukteeper"]):
+    for (_, _), group in df.groupby(["video", "person_name"]):
         groups.append(fill_small_gaps(group))
 
     df_filled = pd.concat(groups, ignore_index=True)
+
+    df_filled
     return (df_filled,)
 
 
@@ -90,11 +68,11 @@ def _():
 @app.cell(hide_code=True)
 def _(df_filled):
     total_seconds = (
-        df_filled.groupby("dukteeper")["timestamp"].count().reset_index(name="total_seconds")
+        df_filled.groupby("person_name")["timestamp"].count().reset_index(name="total_seconds")
     )
 
     total_videos = (
-        df_filled.groupby("dukteeper")["video"].nunique().reset_index(name="total_videos")
+        df_filled.groupby("person_name")["video"].nunique().reset_index(name="total_videos")
     )
     return total_seconds, total_videos
 
@@ -102,19 +80,19 @@ def _(df_filled):
 @app.cell(hide_code=True)
 def _(df_filled):
     daily_counts = (
-        df_filled.groupby(["dukteeper", "date"])
+        df_filled.groupby(["person_name", "date"])
         .size()  # number of rows = frames
         .reset_index(name="frames")
-        .sort_values(["dukteeper", "date"])
+        .sort_values(["person_name", "date"])
     )
 
-    unique_videos = df_filled[["dukteeper", "video", "date"]].drop_duplicates()
+    unique_videos = df_filled[["person_name", "video", "date"]].drop_duplicates()
 
     daily_video_counts = (
-        unique_videos.groupby(["dukteeper", "date"])
+        unique_videos.groupby(["person_name", "date"])
         .size()  # number of rows = frames
         .reset_index(name="new_videos")
-        .sort_values(["dukteeper", "date"])
+        .sort_values(["person_name", "date"])
     )
 
     daily_total_video_counts = (
@@ -127,9 +105,9 @@ def _(df_filled):
     )
 
     # Compute cumulative sum **per person**
-    daily_counts["cumulative_frames"] = daily_counts.groupby("dukteeper")["frames"].cumsum()
+    daily_counts["cumulative_frames"] = daily_counts.groupby("person_name")["frames"].cumsum()
 
-    daily_video_counts["cumulative_videos"] = daily_video_counts.groupby("dukteeper")[
+    daily_video_counts["cumulative_videos"] = daily_video_counts.groupby("person_name")[
         "new_videos"
     ].cumsum()
 
@@ -138,7 +116,16 @@ def _(df_filled):
 
 
 @app.cell(hide_code=True)
-def _(alt, daily_counts, daily_video_counts, pd, total_seconds, total_videos):
+def _(
+    Path,
+    alt,
+    base64,
+    daily_counts,
+    daily_video_counts,
+    pd,
+    total_seconds,
+    total_videos,
+):
     # Set widths/heights
     width_bar = 1000
     height_bar = 400
@@ -152,9 +139,9 @@ def _(alt, daily_counts, daily_video_counts, pd, total_seconds, total_videos):
         alt.Chart(total_seconds)
         .mark_bar()
         .encode(
-            x=alt.X("dukteeper:N", title="Dukteeper"),
+            x=alt.X("person_name:N", title="person_name"),
             y=alt.Y("total_seconds:Q", title="Aantal Seconden"),
-            color="dukteeper:N",
+            color="person_name:N",
         )
         .properties(width=width_bar, height=height_bar, title="Aantal Seconden in Beeld")
     )
@@ -174,9 +161,9 @@ def _(alt, daily_counts, daily_video_counts, pd, total_seconds, total_videos):
         alt.Chart(total_videos)
         .mark_bar()
         .encode(
-            x=alt.X("dukteeper:N", title="Dukteeper"),
+            x=alt.X("person_name:N", title="person_name"),
             y=alt.Y("total_videos:Q", title="Antal Videos"),
-            color="dukteeper:N",
+            color="person_name:N",
         )
         .properties(width=width_bar, height=height_bar, title="Aantal videos verschenen")
     )
@@ -196,11 +183,11 @@ def _(alt, daily_counts, daily_video_counts, pd, total_seconds, total_videos):
         .encode(
             x=alt.X("date:T", title="Date"),
             y=alt.Y("cumulative_frames:Q", title="Aantal Secondes"),
-            color="dukteeper:N",
-            tooltip=["dukteeper", "date", "cumulative_frames"],
+            color="person_name:N",
+            tooltip=["person_name", "date", "cumulative_frames"],
         )
         .properties(
-            width=width_line, height=height_line, title="Running Total of Frames per Dukteeper"
+            width=width_line, height=height_line, title="Running Total of Frames per person_name"
         )
     )
 
@@ -213,33 +200,31 @@ def _(alt, daily_counts, daily_video_counts, pd, total_seconds, total_videos):
         .encode(
             x=alt.X("date:T", title="Date"),
             y=alt.Y("cumulative_videos:Q", title="Aantal Videos"),
-            color="dukteeper:N",
-            tooltip=["dukteeper", "date", "cumulative_videos"],
+            color="person_name:N",
+            tooltip=["person_name", "date", "cumulative_videos"],
         )
         .properties(
-            width=width_line, height=height_line, title="Running Total of Videos per Dukteeper"
+            width=width_line, height=height_line, title="Running Total of Videos per person_name"
         )
     )
 
-    import base64
-    from pathlib import Path
 
     # Path to your folder of known faces
     faces_folder = Path("known_faces")
 
-    # Build a dataframe with Dukteeper names and image data
+    # Build a dataframe with person_name names and image data
     avatars_list = []
 
     for img_path in faces_folder.iterdir():
         if img_path.suffix.lower() in [".png", ".jpg", ".jpeg"]:
-            # Assuming file name is the Dukteeper name: "Alice.png" -> "Alice"
-            dukteeper_name = img_path.stem
+            # Assuming file name is the person_name name: "Alice.png" -> "Alice"
+            person_name_name = img_path.stem
             # Read image and encode as base64
             with open(img_path, "rb") as file:
                 img_bytes = file.read()
                 img_b64 = base64.b64encode(img_bytes).decode("utf-8")
                 img_data = f"data:image/{img_path.suffix[1:]};base64,{img_b64}"
-                avatars_list.append({"dukteeper": dukteeper_name, "img_url": img_data})
+                avatars_list.append({"person_name": person_name_name, "img_url": img_data})
 
     avatars_df = pd.DataFrame(avatars_list)
     avatars_df
@@ -248,7 +233,7 @@ def _(alt, daily_counts, daily_video_counts, pd, total_seconds, total_videos):
         alt.Chart(avatars_df)
         .mark_image(width=150, height=150)
         .encode(
-            x="dukteeper:N",
+            x="person_name:N",
             y=alt.value(-80),  # slightly below x-axis
             url="img_url:N",
         )
@@ -298,6 +283,11 @@ def _(chart_total_seconds):
 @app.cell
 def _(chart_running_total_seconds):
     chart_running_total_seconds
+    return
+
+
+@app.cell
+def _():
     return
 
 
