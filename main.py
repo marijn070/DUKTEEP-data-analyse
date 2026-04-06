@@ -22,7 +22,7 @@ def main():
     print(f"Totale lengte: {total_playtime}")
 
     with get_connection() as conn:
-        total_videos = len(mp4_files)
+        # total_videos = len(mp4_files)
 
         for i, mp4_file in enumerate(mp4_files, 1):
             print(f"Processing video {i}/{total_videos}: {mp4_file}")

@@ -10,6 +10,6 @@ FACE_PATHS_WITH_NAMES = {
 }
 DB_URI = "postgresql://postgres:postgres@localhost:5555/dukteep"
 FRAME_INTERVAL = 1.0
-MODEL_NAME = "Facenet"
+MODEL_NAME = "VGG-Face"
 DATABASE_TYPE = "pgvector"
 SAMPLE_INTERVAL = 1.0

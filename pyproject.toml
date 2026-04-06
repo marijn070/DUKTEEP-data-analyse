@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "altair>=6.0.0",
     "deepface>=0.0.99",
     "fastparquet>=2026.3.0",
     "keras>=2.15.0",
@@ -12,9 +13,11 @@ dependencies = [
     "pandas>=2.3.3",
     "pgvector>=0.4.2",
     "psycopg>=3.3.3",
+    "pydantic-ai>=0.8.1",
     "tensorflow[and-cuda]==2.15.1",
     "tf-keras>=2.15.1",
     "tqdm>=4.67.3",
+    "ty>=0.0.28",
 ]
 
 [tool.uv.sources]
