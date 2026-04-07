@@ -1,293 +1,310 @@
 import marimo
 
 __generated_with = "0.22.4"
-app = marimo.App(
-    width="medium",
-    layout_file="layouts/data_analyse.slides.json",
-)
+app = marimo.App(width="medium")
 
 
 @app.cell
 def _():
     import pandas as pd
     from pathlib import Path
+    import marimo as mo
+    import altair as alt
 
     import base64
 
-    return Path, base64, pd
+    return Path, alt, mo, pd
 
 
-@app.cell
+@app.cell(hide_code=True)
+def _():
+    import os
+    import sqlalchemy
+
+    _password = os.environ.get("POSTGRES_PASSWORD", "postgres")
+    DATABASE_URL = f"postgresql://postgres:{_password}@localhost:5555/dukteep"
+    engine = sqlalchemy.create_engine(DATABASE_URL)
+    return (engine,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    # DUKTEEP Data Analyse
+
+    ## De data
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(engine, mo):
+    _df = mo.sql(
+        f"""
+        SELECT
+            img_name
+        from
+            embeddings_facenet_opencv_aligned_raw;
+        """,
+        engine=engine
+    )
+    return
+
+
+@app.cell(hide_code=True)
 def _(Path, pd):
     dir_path = Path("data")
-
     newest_file = max(dir_path.iterdir(), key=lambda f: f.stat().st_mtime)
 
-    df = pd.read_parquet(newest_file)
+    df = pd.read_parquet("data/old_dbs.parquet")
+    # df = pd.read_parquet(newest_file, engine="pyarrow")
 
-    print(df.columns)
-
-    def fill_small_gaps(group):
-        group = group.sort_values("timestamp").reset_index(drop=True)
-
-        new_rows = []
-
-        for i in range(1, len(group)):
-            prev = group.loc[i - 1]
-            curr = group.loc[i]
-
-            if curr["timestamp"] - prev["timestamp"] == 2:
-                new_row = prev.copy()
-                new_row["timestamp"] = prev["timestamp"] + 1
-                new_rows.append(new_row)
-
-        if new_rows:
-            group = pd.concat([group, pd.DataFrame(new_rows)], ignore_index=True)
-
-        return group
-
-    groups = []
-
-    for (_, _), group in df.groupby(["video", "person_name"]):
-        groups.append(fill_small_gaps(group))
-
-    df_filled = pd.concat(groups, ignore_index=True)
-
-    df_filled
-    return (df_filled,)
+    df
+    return (df,)
 
 
 @app.cell(hide_code=True)
-def _():
-    import altair as alt
-
-    alt.renderers.enable("default")
-    return (alt,)
-
-
-@app.cell(hide_code=True)
-def _(df_filled):
-    total_seconds = (
-        df_filled.groupby("person_name")["timestamp"].count().reset_index(name="total_seconds")
-    )
-
-    total_videos = (
-        df_filled.groupby("person_name")["video"].nunique().reset_index(name="total_videos")
-    )
-    return total_seconds, total_videos
+def _(df, mo):
+    mo.md(f"""
+    We hebben nu de dataset van {len(df)} frames van de gezichten van dukteepers.
+    Even kijken hoe we die leuk kunnen visualiseren
+    """)
+    return
 
 
 @app.cell(hide_code=True)
-def _(df_filled):
-    daily_counts = (
-        df_filled.groupby(["person_name", "date"])
-        .size()  # number of rows = frames
-        .reset_index(name="frames")
-        .sort_values(["person_name", "date"])
-    )
-
-    unique_videos = df_filled[["person_name", "video", "date"]].drop_duplicates()
-
-    daily_video_counts = (
-        unique_videos.groupby(["person_name", "date"])
-        .size()  # number of rows = frames
-        .reset_index(name="new_videos")
-        .sort_values(["person_name", "date"])
-    )
-
-    daily_total_video_counts = (
-        df_filled[["video", "date"]]
-        .drop_duplicates()
-        .groupby("date")
-        .size()
-        .reset_index(name="new_videos")
-        .sort_values("date")
-    )
-
-    # Compute cumulative sum **per person**
-    daily_counts["cumulative_frames"] = daily_counts.groupby("person_name")["frames"].cumsum()
-
-    daily_video_counts["cumulative_videos"] = daily_video_counts.groupby("person_name")[
-        "new_videos"
-    ].cumsum()
-
-    daily_total_video_counts["cumulative_videos"] = daily_video_counts["new_videos"].cumsum()
-    return daily_counts, daily_video_counts
+def _(mo):
+    mo.md(r"""
+    # Grafieken - Detecties
+    """)
+    return
 
 
 @app.cell(hide_code=True)
-def _(
-    Path,
-    alt,
-    base64,
-    daily_counts,
-    daily_video_counts,
-    pd,
-    total_seconds,
-    total_videos,
-):
-    # Set widths/heights
-    width_bar = 1000
-    height_bar = 400
-    width_line = 1000
-    height_line = 500
+def _(df, mo):
+    counts = df[['person_name','video']].drop_duplicates().groupby('person_name').size();
+    totals = df[['person_name','video']].groupby('person_name').size();
 
-    # -----------------------
-    # 1️⃣ Total Seconds Bar Chart
-    # -----------------------
-    bars_seconds = (
-        alt.Chart(total_seconds)
+    mo.md(f"""
+    ## Wie komt er in de meeste filmpjes voor?
+    """)
+    return (totals,)
+
+
+@app.cell(hide_code=True)
+def _(alt, df):
+    _chart = (
+        alt.Chart(df)
         .mark_bar()
         .encode(
-            x=alt.X("person_name:N", title="person_name"),
-            y=alt.Y("total_seconds:Q", title="Aantal Seconden"),
-            color="person_name:N",
+            x=alt.X(field='person_name', type='nominal', title='Dukteeper'),
+            y=alt.Y(field='video', type='quantitative', title='Aantal Videos', aggregate='distinct'),
+            color=alt.Color(field='person_name', type='nominal'),
+            tooltip=[
+                alt.Tooltip(field='person_name', title='Dukteeper'),
+                alt.Tooltip(field='video', aggregate='distinct', title='Aantal Videos'),
+                alt.Tooltip(field='person_name')
+            ]
         )
-        .properties(width=width_bar, height=height_bar, title="Aantal Seconden in Beeld")
+        .properties(
+            title='Wie heeft er het meeste Videos?',
+            height=500,
+            width='container',
+            config={
+                'axis': {
+                    'grid': True
+                }
+            }
+        )
     )
+    _chart
+    return
 
-    labels_seconds = bars_seconds.mark_text(
-        dy=-5,  # shift text above bars
-        align="center",
-        color="black",
-    ).encode(text=alt.Text("total_seconds", format=".1f"))
 
-    chart_total_seconds = bars_seconds + labels_seconds
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Aandeel aantal filmpjes per maand
+    """)
+    return
 
-    # -----------------------
-    # 2️⃣ Total Videos Bar Chart
-    # -----------------------
-    bars_videos = (
-        alt.Chart(total_videos)
+
+@app.cell(hide_code=True)
+def _(alt, df):
+    # replace _df with your data source
+    _chart = (
+        alt.Chart(df)
+        .mark_arc(innerRadius=30, outerRadius=100)
+        .encode(
+            color=alt.Color(field='person_name', type='nominal'),
+            theta=alt.Theta(field='video', type='nominal', aggregate='distinct'),
+            row=alt.Row(field='date', timeUnit='yearmonth', type='temporal', bin={
+                'maxbins': 6
+            }),
+            tooltip=[
+                alt.Tooltip(field='video', aggregate='distinct'),
+                alt.Tooltip(field='person_name')
+            ]
+        )
+        .properties(
+            height=290,
+            width='container',
+            config={
+                'axis': {
+                    'grid': False
+                }
+            }
+        )
+    )
+    _chart
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo, totals):
+    mo.md(rf"""
+    ## Wie is er het vaakst gedetecteerd?
+
+    Mees komt wel in veel filmpjes voor, maar is veruit het minste door de gezichtsherkenning software herkend. Angela is wel {totals["angela"]} keer gedetecteerd en mees maar {totals["mees"]} keer gedetecteerd.
+
+    Ik denk doordat
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(alt, df):
+    # replace _df with your data source
+    _chart = (
+        alt.Chart(df)
         .mark_bar()
         .encode(
-            x=alt.X("person_name:N", title="person_name"),
-            y=alt.Y("total_videos:Q", title="Antal Videos"),
-            color="person_name:N",
-        )
-        .properties(width=width_bar, height=height_bar, title="Aantal videos verschenen")
-    )
-
-    labels_videos = bars_videos.mark_text(dy=-5, align="center", color="black").encode(
-        text="total_videos:Q"
-    )
-
-    chart_total_videos = bars_videos + labels_videos
-
-    # -----------------------
-    # 3️⃣ Running Total of Frames Line Chart
-    # -----------------------
-    chart_running_total_seconds = (
-        alt.Chart(daily_counts)
-        .mark_line(interpolate="step-after", point=True)
-        .encode(
-            x=alt.X("date:T", title="Date"),
-            y=alt.Y("cumulative_frames:Q", title="Aantal Secondes"),
-            color="person_name:N",
-            tooltip=["person_name", "date", "cumulative_frames"],
+            x=alt.X(field='person_name', type='nominal', title='Dukteeper'),
+            y=alt.Y(field='video', type='nominal', title='Aantal Frames', aggregate='count'),
+            color=alt.Color(field='person_name', type='nominal'),
+            tooltip=[
+                alt.Tooltip(field='person_name', title='Dukteeper'),
+                alt.Tooltip(field='video', aggregate='count', title='Aantal Frames'),
+                alt.Tooltip(field='person_name')
+            ]
         )
         .properties(
-            width=width_line, height=height_line, title="Running Total of Frames per person_name"
+            title='Aantal frames Gedetecteerd',
+            height=500,
+            width='container',
+            config={
+                'axis': {
+                    'grid': True
+                }
+            }
         )
     )
-
-    # -----------------------
-    # 4️⃣ Running Total of Videos Line Chart
-    # -----------------------
-    chart_running_total_videos = (
-        alt.Chart(daily_video_counts)
-        .mark_line(interpolate="step-after", point=True)
-        .encode(
-            x=alt.X("date:T", title="Date"),
-            y=alt.Y("cumulative_videos:Q", title="Aantal Videos"),
-            color="person_name:N",
-            tooltip=["person_name", "date", "cumulative_videos"],
-        )
-        .properties(
-            width=width_line, height=height_line, title="Running Total of Videos per person_name"
-        )
-    )
-
-
-    # Path to your folder of known faces
-    faces_folder = Path("known_faces")
-
-    # Build a dataframe with person_name names and image data
-    avatars_list = []
-
-    for img_path in faces_folder.iterdir():
-        if img_path.suffix.lower() in [".png", ".jpg", ".jpeg"]:
-            # Assuming file name is the person_name name: "Alice.png" -> "Alice"
-            person_name_name = img_path.stem
-            # Read image and encode as base64
-            with open(img_path, "rb") as file:
-                img_bytes = file.read()
-                img_b64 = base64.b64encode(img_bytes).decode("utf-8")
-                img_data = f"data:image/{img_path.suffix[1:]};base64,{img_b64}"
-                avatars_list.append({"person_name": person_name_name, "img_url": img_data})
-
-    avatars_df = pd.DataFrame(avatars_list)
-    avatars_df
-
-    avatars = (
-        alt.Chart(avatars_df)
-        .mark_image(width=150, height=150)
-        .encode(
-            x="person_name:N",
-            y=alt.value(-80),  # slightly below x-axis
-            url="img_url:N",
-        )
-    )
-
-    chart_total_seconds = chart_total_seconds + avatars
-    chart_total_videos = chart_total_videos + avatars
-    return (
-        chart_running_total_seconds,
-        chart_running_total_videos,
-        chart_total_seconds,
-        chart_total_videos,
-    )
-
-
-@app.cell
-def _(
-    alt,
-    chart_running_total_seconds,
-    chart_running_total_videos,
-    chart_total_seconds,
-    chart_total_videos,
-):
-    dashboard_seconds = alt.vconcat(chart_total_seconds, chart_running_total_seconds)
-    dashboard_videos = alt.vconcat(chart_total_videos, chart_running_total_videos)
-    return
-
-
-@app.cell
-def _(chart_total_videos):
-    chart_total_videos
-    return
-
-
-@app.cell
-def _(chart_running_total_videos):
-    chart_running_total_videos
-    return
-
-
-@app.cell
-def _(chart_total_seconds):
-    chart_total_seconds
-    return
-
-
-@app.cell
-def _(chart_running_total_seconds):
-    chart_running_total_seconds
+    _chart
     return
 
 
 @app.cell
 def _():
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    # Ondertiteling
+
+    We gaan srt files analyseren om te zien welke woorden er het vaakste worden gezegd
+    """)
+    return
+
+
+@app.cell
+def _():
+    import srt
+    import glob
+    from wordcloud import WordCloud
+    import nltk
+    nltk.download("stopwords")
+
+    from nltk.corpus import stopwords
+
+    return WordCloud, glob, srt, stopwords
+
+
+@app.cell
+def _(glob, pd, srt):
+    subtitles_files = glob.glob("videos/*.srt")
+
+    video_subs = [srt.parse(open(file).read()) for file in subtitles_files]
+
+    wc = {}
+
+    for video in video_subs:
+        for subtitle in video:
+            for word in subtitle.content.split():
+                word = word.lower().strip(',.!?";()[]"')
+                wc[word] = wc.get(word, 0) + 1
+
+
+    wc_df = pd.DataFrame(list(wc.items()), columns=["word", "count"])
+
+
+    return (wc,)
+
+
+@app.cell(hide_code=True)
+def _(mo, wc):
+    mo.md(f"""
+    ## Hoevaak zeggen we wat?
+
+    Er wordt vanalles gezegd in onze videos. We reviewen vette tech, en er is dan ook in totaal {wc["vet"]} keer vet gezegd en {wc["tech"]} keer tech gezegd.
+
+    We hebben het ook over elkaar; {wc["angela"]} keer angela gezegd en {wc["mees"]} keer mees gezegd, {wc["koen"]} keer koen gezegd en {wc["marijn"]} keer marijn gezegd.
+
+    Fiets zeggen we *{wc["fiets"]}* keer, en dat is best veel. We hebben het ook wel eens over eten, want eten zeggen we {wc["eten"]} keer. En drinken zeggen we {wc["drinken"]} keer.
+
+    ### Schelden we veel?
+
+    - shit: {wc.get("shit", 0)} keer
+    - kut: {wc.get("kut", 0)} keer
+    - fuck: {wc.get("fuck", 0)} keer
+    - oeps: {wc.get("oeps", 0)} keer
+
+    Robot zeggen we {wc["robot"]} keer en we hebben het {wc["clubhuis"]} keer over ons clubhuis.
+    Bambitron wordt {wc["bambitron"]} keer genoemd, ouwe legend dat het is.
+
+    **Software**
+    - blender: {wc["blender"]}
+    - computer: {wc["computer"]}
+    - code: {wc["code"]}
+    - cnc: {wc["cnc"]}
+    - software: {wc["software"]}
+    - fixen: {wc["fixen"]}
+    - fix: {wc["fix"]}
+    - mega: {wc["mega"]}
+    """)
+    return
+
+
+@app.cell
+def _(WordCloud, mo, stopwords, wc):
+    dutch_stopwords = set(stopwords.words("dutch"))
+    extra_words = {"we", "wel"}
+    dutch_stopwords.update(extra_words)
+
+    wordcloud = WordCloud(
+        width = 1200,
+        height = 600,
+    )
+
+
+    wordcloud.generate_from_frequencies({
+        word: count
+        for (word, count) in wc.items()
+        if word not in dutch_stopwords
+    })
+
+    mo.image(wordcloud.to_array())
     return
 
 

@@ -13,7 +13,6 @@ def find_faces(conn, face_paths_with_names) -> pd.DataFrame:
         connection=conn,
         database_type=DATABASE_TYPE,
         model_name=MODEL_NAME,
-        # search_method="ann",
     )
 
     processed = [process_df(df, name) for df, name in zip(dfs, names)]
@@ -29,4 +28,14 @@ def process_df(df, name):
     df["timestamp"] = pd.to_timedelta(df["timestamp_str"].astype(float), unit="s")
     df["person_name"] = name
 
-    return df[["date", "video", "timestamp", "person_name"]]
+    return df[
+        [
+            "date",
+            "video",
+            "timestamp",
+            "person_name",
+            "model_name",
+            "detector_backend",
+            "search_method",
+        ]
+    ]
